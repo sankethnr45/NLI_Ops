@@ -14,7 +14,9 @@ export interface ToolPlan {
 
 export interface LlmService {
   generateToolPlan(message: string, tools: ToolSchema[]): Promise<ToolPlan>;
+  generateFollowUpToolPlan(message: string, toolResults: ToolResult[], tools: ToolSchema[]): Promise<ToolPlan>;
   summarizeWithToolResults(message: string, toolResults: ToolResult[]): Promise<string>;
+  streamSummaryWithToolResults(message: string, toolResults: ToolResult[]): AsyncIterable<string>;
 }
 
 export function getLlmService(): LlmService {

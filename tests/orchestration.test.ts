@@ -28,6 +28,12 @@ describe("AI orchestration", () => {
         assert.equal(toolResults[0]?.name, "getCriticalAlerts");
         return "248K001B reported a critical high vibration anomaly.";
       },
+      async generateFollowUpToolPlan() {
+        return { text: "", toolCalls: [] };
+      },
+      async *streamSummaryWithToolResults() {
+        yield "";
+      },
     };
 
     const result = await runOperationalChat("Show critical vibration alerts", { llm, toolExecutor });
@@ -48,11 +54,68 @@ describe("AI orchestration", () => {
       async summarizeWithToolResults() {
         throw new Error("summarization should not run without tool calls");
       },
+      async generateFollowUpToolPlan() {
+        throw new Error("follow-up planning should not run without initial tool calls");
+      },
+      async *streamSummaryWithToolResults() {
+        yield "";
+      },
     };
 
     const result = await runOperationalChat("What can you do?", { llm });
 
     assert.equal(result.response, "Ask me about assets, alerts, maintenance history, or vibration readings.");
     assert.deepEqual(result.toolCalls, []);
+  });
+
+  it("can chain follow-up tools for maintenance correlation", async () => {
+    const calls: string[] = [];
+    const toolExecutor: ToolExecutor = async (name, args) => {
+      calls.push(`${name}:${JSON.stringify(args)}`);
+
+      if (name === "getCriticalAlerts") {
+        return {
+          tool: name,
+          count: 1,
+          alerts: [{ asset_id: "248K001B", alert_type: "high_vibration", severity: "critical", value: 9.3 }],
+        };
+      }
+
+      return {
+        tool: name,
+        assetId: "248K001B",
+        count: 1,
+        maintenanceLogs: [{ asset_id: "248K001B", issue: "bearing wear", action: "bearing replaced" }],
+      };
+    };
+
+    const llm: LlmService = {
+      async generateToolPlan() {
+        return { text: "", toolCalls: [{ name: "getCriticalAlerts", args: { alertType: "high_vibration" } }] };
+      },
+      async generateFollowUpToolPlan(_message, toolResults) {
+        assert.equal(toolResults.length, 1);
+        return { text: "", toolCalls: [{ name: "getMaintenanceHistory", args: { assetId: "248K001B" } }] };
+      },
+      async summarizeWithToolResults(_message, toolResults) {
+        assert.equal(toolResults.length, 2);
+        return "248K001B has critical vibration anomalies that should be reviewed against prior bearing wear work.";
+      },
+      async *streamSummaryWithToolResults() {
+        yield "";
+      },
+    };
+
+    const result = await runOperationalChat("Correlate critical vibration alerts with maintenance", {
+      llm,
+      toolExecutor,
+    });
+
+    assert.deepEqual(calls, [
+      'getCriticalAlerts:{"alertType":"high_vibration"}',
+      'getMaintenanceHistory:{"assetId":"248K001B"}',
+    ]);
+    assert.deepEqual(result.toolCalls, ["getCriticalAlerts", "getMaintenanceHistory"]);
+    assert.match(result.response, /bearing wear/);
   });
 });

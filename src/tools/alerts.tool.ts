@@ -2,6 +2,8 @@ import type { Filter } from "mongodb";
 
 import type { AlertDocument, AssetDocument, SensorReadingDocument } from "../models/operational.models.js";
 import { getDatabase, type DatabaseLike } from "../services/mongo.service.js";
+import { logger } from "../utils/logger.js";
+import { measureAsync } from "../utils/timing.js";
 
 export interface GetCriticalAlertsInput {
   assetType?: string;
@@ -39,11 +41,23 @@ async function findAssetsByIds(database: DatabaseLike, assetIds: string[]): Prom
     return [];
   }
 
-  return database
-    .collection<AssetDocument>("assets")
-    .find({ asset_id: { $in: assetIds } } as Filter<AssetDocument>)
-    .sort({ asset_id: 1 })
-    .toArray();
+  logger.info("Executing query", { category: "mongo", operation: "find", collection: "assets", query: { asset_id: { $in: assetIds } } });
+  const { result: assets, durationMs } = await measureAsync(() =>
+    database
+      .collection<AssetDocument>("assets")
+      .find({ asset_id: { $in: assetIds } } as Filter<AssetDocument>)
+      .sort({ asset_id: 1 })
+      .toArray(),
+  );
+  logger.info("MongoDB query completed", {
+    category: "mongo",
+    operation: "find_complete",
+    collection: "assets",
+    durationMs,
+    resultCount: assets.length,
+  });
+
+  return assets;
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {
@@ -63,11 +77,17 @@ export async function getCriticalAlerts(
     filter.alert_type = alertType;
   }
 
-  const alerts = await database
-    .collection<AlertDocument>("alerts")
-    .find(filter)
-    .sort({ timestamp: -1 })
-    .toArray();
+  logger.info("Executing query", { category: "mongo", operation: "find", collection: "alerts", query: filter });
+  const { result: alerts, durationMs } = await measureAsync(() =>
+    database.collection<AlertDocument>("alerts").find(filter).sort({ timestamp: -1 }).toArray(),
+  );
+  logger.info("MongoDB query completed", {
+    category: "mongo",
+    operation: "find_complete",
+    collection: "alerts",
+    durationMs,
+    resultCount: alerts.length,
+  });
   const assetIds = [...new Set(alerts.map((alert) => alert.asset_id))];
   const assets = await findAssetsByIds(database, assetIds);
   const assetsById = new Map(assets.map((asset) => [asset.asset_id, asset]));
@@ -96,11 +116,21 @@ export async function getHighVibrationAssets(
   }
 
   const assetType = normalizeOptionalString(input.assetType);
-  const readings = await database
-    .collection<SensorReadingDocument>("sensor_readings")
-    .find({ vibration: { $gte: threshold } } as Filter<SensorReadingDocument>)
-    .sort({ vibration: -1 })
-    .toArray();
+  logger.info("Executing query", { category: "mongo", operation: "find", collection: "sensor_readings", query: { vibration: { $gte: threshold } } });
+  const { result: readings, durationMs } = await measureAsync(() =>
+    database
+      .collection<SensorReadingDocument>("sensor_readings")
+      .find({ vibration: { $gte: threshold } } as Filter<SensorReadingDocument>)
+      .sort({ vibration: -1 })
+      .toArray(),
+  );
+  logger.info("MongoDB query completed", {
+    category: "mongo",
+    operation: "find_complete",
+    collection: "sensor_readings",
+    durationMs,
+    resultCount: readings.length,
+  });
   const assetIds = [...new Set(readings.map((reading) => reading.asset_id))];
   const assets = await findAssetsByIds(database, assetIds);
   const assetsById = new Map(assets.map((asset) => [asset.asset_id, asset]));

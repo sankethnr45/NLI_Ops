@@ -31,6 +31,15 @@ const systemInstruction = `
 You are an operational intelligence assistant for industrial assets.
 Use tools for operational data. Do not invent asset status, alerts, telemetry, or maintenance history.
 When tool results are available, summarize them clearly for a plant operations user.
+Focus on anomaly interpretation, recurring issues, maintenance correlation, likely operational impact, and practical next checks.
+`;
+
+const summaryInstruction = `
+Summarize these backend tool results for an operations user.
+Do not merely count records. Explain what the results mean operationally.
+Look for repeated asset IDs, recurring alert types, high telemetry values, asset health/status, and maintenance issues such as bearing wear, seal leaks, overheating, or inspection history.
+If alert/telemetry and maintenance results point to the same asset, explicitly call out the possible correlation.
+Keep the answer concise, cite asset IDs, and avoid inventing facts not present in the tool results.
 `;
 
 function assertGeminiConfigured() {
@@ -96,6 +105,96 @@ async function callGemini(contents: GeminiContent[], tools?: ReturnType<typeof t
   return (await response.json()) as GeminiResponse;
 }
 
+async function* streamGemini(contents: GeminiContent[]): AsyncIterable<GeminiResponse> {
+  assertGeminiConfigured();
+
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}` +
+    `:streamGenerateContent?alt=sse&key=${env.geminiApiKey}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemInstruction }],
+      },
+      contents,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Gemini streaming request failed with ${response.status} for model "${env.geminiModel}". ${errorBody}`);
+  }
+
+  if (!response.body) {
+    throw new Error("Gemini streaming response did not include a response body.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const event of events) {
+      const data = event
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trim())
+        .join("\n");
+
+      if (!data || data === "[DONE]") {
+        continue;
+      }
+
+      yield JSON.parse(data) as GeminiResponse;
+    }
+  }
+}
+
+function buildToolResultParts(message: string, toolResults: ToolResult[]): GeminiContent[] {
+  return [
+    {
+      role: "user",
+      parts: [{ text: message }],
+    },
+    {
+      role: "user",
+      parts: [
+        { text: summaryInstruction },
+        {
+          text: JSON.stringify(
+            toolResults.map((toolResult) => ({
+              tool: toolResult.name,
+              result: toolResult.result,
+            })),
+          ),
+        },
+        ...toolResults.map((toolResult) => ({
+          functionResponse: {
+            name: toolResult.name,
+            response: {
+              result: toolResult.result,
+            },
+          },
+        })),
+      ],
+    },
+  ];
+}
+
 export function createGeminiService(): LlmService {
   return {
     async generateToolPlan(message: string, tools: ToolSchema[]): Promise<ToolPlan> {
@@ -116,34 +215,55 @@ export function createGeminiService(): LlmService {
     },
 
     async summarizeWithToolResults(message: string, toolResults: ToolResult[]): Promise<string> {
-      const contents: GeminiContent[] = [
-        {
-          role: "user",
-          parts: [{ text: message }],
-        },
-        {
-          role: "user",
-          parts: [
-            {
-              text:
-                "Summarize these backend tool results for an operations user. Keep it concise and cite asset IDs when available.",
-            },
-            ...toolResults.map((toolResult) => ({
-              functionResponse: {
-                name: toolResult.name,
-                response: {
-                  result: toolResult.result,
-                },
-              },
-            })),
-          ],
-        },
-      ];
+      const contents = buildToolResultParts(message, toolResults);
 
       const response = await callGemini(contents);
       const text = readResponseText(response);
 
       return text || "I found operational data, but Gemini did not return a summary.";
+    },
+
+    async generateFollowUpToolPlan(message: string, toolResults: ToolResult[], tools: ToolSchema[]): Promise<ToolPlan> {
+      const response = await callGemini(
+        [
+          {
+            role: "user",
+            parts: [
+              {
+                text:
+                  "Review the user question and backend tool results. If one more tool batch would improve operational correlation, call those tools now. Prefer maintenance history for assets with vibration or overheating anomalies. If no more data is needed, return plain text saying no follow-up tools are needed.",
+              },
+              { text: message },
+              {
+                text: JSON.stringify(
+                  toolResults.map((toolResult) => ({
+                    tool: toolResult.name,
+                    result: toolResult.result,
+                  })),
+                ),
+              },
+            ],
+          },
+        ],
+        toGeminiToolDeclarations(tools),
+      );
+
+      return {
+        text: readResponseText(response),
+        toolCalls: readToolCalls(response),
+      };
+    },
+
+    async *streamSummaryWithToolResults(message: string, toolResults: ToolResult[]): AsyncIterable<string> {
+      const contents = buildToolResultParts(message, toolResults);
+
+      for await (const response of streamGemini(contents)) {
+        const text = readResponseText(response);
+
+        if (text) {
+          yield text;
+        }
+      }
     },
   };
 }

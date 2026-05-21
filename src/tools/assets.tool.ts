@@ -2,6 +2,8 @@ import type { Filter } from "mongodb";
 
 import type { AssetDocument } from "../models/operational.models.js";
 import { getDatabase, type DatabaseLike } from "../services/mongo.service.js";
+import { logger } from "../utils/logger.js";
+import { measureAsync } from "../utils/timing.js";
 
 export interface GetAssetStatusInput {
   assetId: string;
@@ -29,7 +31,16 @@ export async function getAssetStatus(
 ): Promise<GetAssetStatusResult> {
   const assetId = validateAssetId(input.assetId);
   const assets = database.collection<AssetDocument>("assets");
-  const asset = await assets.findOne({ asset_id: assetId } as Filter<AssetDocument>);
+  logger.info("Executing query", { category: "mongo", operation: "findOne", collection: "assets", query: { asset_id: assetId } });
+  const { result: asset, durationMs } = await measureAsync(() =>
+    assets.findOne({ asset_id: assetId } as Filter<AssetDocument>),
+  );
+  logger.info("MongoDB query completed", {
+    category: "mongo",
+    operation: "findOne_complete",
+    collection: "assets",
+    durationMs,
+  });
 
   return {
     tool: "getAssetStatus",
