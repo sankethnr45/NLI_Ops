@@ -16,6 +16,10 @@ function createDatabase(collections: Record<string, unknown[]>): DatabaseLike {
         return Number(documentValue) >= Number((value as { $gte: number }).$gte);
       }
 
+      if (typeof value === "object" && value !== null && "$in" in value) {
+        return (value as { $in: unknown[] }).$in.includes(documentValue);
+      }
+
       return documentValue === value;
     });
 
@@ -51,6 +55,7 @@ describe("operational tools", () => {
         { asset_id: "248K001B", alert_type: "high_vibration", severity: "critical", value: 9.3 },
         { asset_id: "248P002A", alert_type: "overheating", severity: "warning", value: 88 },
       ],
+      assets: [{ asset_id: "248K001B", type: "compressor", unit: "Unit-3", status: "running", health: "warning" }],
     });
 
     const result = await getCriticalAlerts({}, db);
@@ -58,6 +63,26 @@ describe("operational tools", () => {
     assert.equal(result.tool, "getCriticalAlerts");
     assert.equal(result.count, 1);
     assert.equal(result.alerts[0]?.asset_id, "248K001B");
+    assert.equal(result.alerts[0]?.asset?.type, "compressor");
+  });
+
+  it("filters critical alerts by asset type and alert type", async () => {
+    const db = createDatabase({
+      alerts: [
+        { asset_id: "248K001B", alert_type: "high_vibration", severity: "critical", value: 9.3 },
+        { asset_id: "248P002A", alert_type: "high_vibration", severity: "critical", value: 9.1 },
+      ],
+      assets: [
+        { asset_id: "248K001B", type: "compressor", unit: "Unit-3", status: "running", health: "warning" },
+        { asset_id: "248P002A", type: "pump", unit: "Unit-2", status: "running", health: "critical" },
+      ],
+    });
+
+    const result = await getCriticalAlerts({ assetType: "compressor", alertType: "high_vibration" }, db);
+
+    assert.equal(result.count, 1);
+    assert.equal(result.alerts[0]?.asset_id, "248K001B");
+    assert.equal(result.alerts[0]?.asset?.type, "compressor");
   });
 
   it("returns asset status for a known asset", async () => {
@@ -93,6 +118,7 @@ describe("operational tools", () => {
         { asset_id: "248K001B", vibration: 8.7, temperature: 92, pressure: 44 },
         { asset_id: "248P002A", vibration: 4.2, temperature: 70, pressure: 31 },
       ],
+      assets: [{ asset_id: "248K001B", type: "compressor", unit: "Unit-3", status: "running", health: "warning" }],
     });
 
     const result = await getHighVibrationAssets({ minimumVibration: 7 }, db);
@@ -100,5 +126,25 @@ describe("operational tools", () => {
     assert.equal(result.tool, "getHighVibrationAssets");
     assert.equal(result.count, 1);
     assert.equal(result.assets[0]?.asset_id, "248K001B");
+    assert.equal(result.assets[0]?.asset?.type, "compressor");
+  });
+
+  it("filters high vibration readings by asset type", async () => {
+    const db = createDatabase({
+      sensor_readings: [
+        { asset_id: "248K001B", vibration: 8.7, temperature: 92, pressure: 44 },
+        { asset_id: "248P002A", vibration: 8.2, temperature: 70, pressure: 31 },
+      ],
+      assets: [
+        { asset_id: "248K001B", type: "compressor", unit: "Unit-3", status: "running", health: "warning" },
+        { asset_id: "248P002A", type: "pump", unit: "Unit-2", status: "running", health: "normal" },
+      ],
+    });
+
+    const result = await getHighVibrationAssets({ minimumVibration: 7, assetType: "compressor" }, db);
+
+    assert.equal(result.count, 1);
+    assert.equal(result.assets[0]?.asset_id, "248K001B");
+    assert.equal(result.assets[0]?.asset?.type, "compressor");
   });
 });

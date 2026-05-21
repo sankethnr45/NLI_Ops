@@ -439,3 +439,238 @@ When uncertain:
 prefer simpler architecture.
 
 Avoid overengineering.
+
+# Simplicity-First Development Philosophy
+
+This project prioritizes learning clarity over enterprise-level abstraction.
+
+The codebase should remain:
+
+* explicit
+* readable
+* traceable
+
+Avoid introducing unnecessary:
+
+* design patterns
+* abstractions
+
+
+The user is learning:
+
+* AI orchestration
+* MCP concepts
+* tool calling
+* backend architecture
+
+The code should help reveal system behavior clearly rather than hide it behind abstractions.
+
+Optimize for:
+
+* understandability
+* debuggability
+* architectural clarity
+
+NOT:
+
+* premature scalability
+* enterprise overengineering
+
+When implementing features:
+
+* keep logic local and understandable
+* avoid unnecessary indirection
+* explain important architectural decisions
+* prefer simple implementations first
+
+The system can evolve later after architectural understanding is achieved.
+
+<!-- for phase 2 development onwards -->
+# Multi-LLM Provider Architecture
+
+The system must support multiple LLM providers.
+
+The architecture should remain provider-agnostic.
+
+Supported providers may include:
+
+* Gemini
+* OpenAI later
+* Ollama etc later
+
+
+The backend should NOT tightly couple orchestration logic to any single provider SDK.
+
+Create a simple LLM abstraction layer.
+
+Suggested structure:
+
+src/services/llm/
+├── gemini.service.ts
+├── openai.service.ts
+├── llm.service.ts
+
+The orchestration layer should communicate through a unified LLM interface.
+
+Keep the abstraction SIMPLE.
+
+Do NOT introduce:
+
+* plugin systems
+* dynamic provider registries
+* dependency injection containers
+* advanced provider factories
+
+Prefer:
+
+* explicit provider selection
+* readable service methods
+* simple conditional provider routing
+
+The system should allow switching providers using environment variables.
+
+Example:
+
+LLM_PROVIDER=gemini
+
+The orchestration layer should remain mostly unchanged when switching providers.
+
+# AI Tool Calling Philosophy
+
+The AI model acts as:
+
+* a reasoning engine
+* a tool selector
+* a summarization layer
+
+The AI model does NOT:
+
+* directly access MongoDB
+* execute arbitrary queries
+* manage backend state
+
+The backend owns all operational logic.
+
+AI interactions should follow this flow:
+
+User Query
+→ AI reasoning
+→ tool selection
+→ backend tool execution
+→ MongoDB query
+→ structured results
+→ AI summarization
+→ final response
+
+Use native provider tool/function calling.
+
+Avoid:
+
+* prompt-only pseudo tool calling
+* regex-based routing
+* brittle parsing logic
+
+The system should use structured tool schemas.
+
+Keep orchestration logic explicit and easy to trace.
+
+# Simplicity Rules for AI Orchestration
+
+The orchestration layer must remain beginner-friendly.
+
+Avoid introducing:
+
+* agents
+* LangChain
+* middleware chains
+* workflow engines
+* event buses
+* repositories
+* plugin architectures
+* excessive abstractions
+
+Prefer:
+
+* explicit orchestration flow
+* direct service calls
+* traceable execution paths
+* readable async/await logic
+
+The user is learning:
+
+* tool calling
+* orchestration
+* MCP concepts
+* AI/backend interaction
+
+The code should make request flow easy to follow.
+
+A developer should easily trace:
+
+request
+→ controller
+→ orchestration service
+→ LLM call
+→ tool execution
+→ MongoDB
+→ response
+
+Keep orchestration centralized and understandable.
+
+# Simplicity Rules for AI Orchestration
+
+The orchestration layer must remain beginner-friendly.
+
+Avoid introducing:
+
+* agents
+* LangChain
+* middleware chains
+* workflow engines
+* event buses
+* repositories
+* plugin architectures
+* excessive abstractions
+
+Prefer:
+
+* explicit orchestration flow
+* direct service calls
+* traceable execution paths
+* readable async/await logic
+
+The user is learning:
+
+* tool calling
+* orchestration
+* MCP concepts
+* AI/backend interaction
+
+The code should make request flow easy to follow.
+
+A developer should easily trace:
+
+request
+→ controller
+→ orchestration service
+→ LLM call
+→ tool execution
+→ MongoDB
+→ response
+
+Keep orchestration centralized and understandable.
+
+# Initial LLM Provider
+
+The initial provider should be Gemini because the project currently uses the Gemini free tier API.
+
+However:
+the architecture must remain provider-agnostic.
+
+Do not tightly couple orchestration logic to Gemini-specific implementation details.
+
+Future providers may include:
+
+* OpenAI
+* Ollama
+* Claude

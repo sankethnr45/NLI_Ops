@@ -1,6 +1,7 @@
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 
+import { chatRoutes } from "../routes/chat.routes.js";
 import { operationalRoutes } from "../routes/operational.routes.js";
 
 export function createApp() {
@@ -13,6 +14,7 @@ export function createApp() {
     response.json({ status: "ok", service: "nli-ops-assistant" });
   });
 
+  app.use(chatRoutes);
   app.use("/api", operationalRoutes);
 
   app.use((error: Error, _request: Request, response: Response, _next: NextFunction) => {
