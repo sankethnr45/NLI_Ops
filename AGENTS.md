@@ -674,3 +674,35 @@ Future providers may include:
 * OpenAI
 * Ollama
 * Claude
+
+# MCP Migration Phase
+
+The project is entering a real MCP implementation phase.
+
+Current system already supports:
+- AI orchestration
+- tool calling
+- multi-tool execution
+- streaming
+- observability
+
+The goal is to gradually migrate embedded tools into real MCP servers.
+
+Important:
+
+- Begin with a single MCP server.
+- Use alerts capabilities first.
+- Keep architecture simple and educational.
+- Avoid distributed complexity.
+- Avoid microservice-style decomposition.
+
+Learning protocol concepts is more important than creating many servers.
+
+Initial MCP server should expose:
+
+- getCriticalAlerts
+- getHighVibrationAssets
+
+Express backend should act as the MCP client/host.
+
+Existing orchestration flow should remain understandable and traceable.

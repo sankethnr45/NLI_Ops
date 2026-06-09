@@ -301,6 +301,76 @@ executeOperationalTool("getCriticalAlerts", args)
 
 That function calls the real backend tool, which queries MongoDB safely.
 
+## 8.1 First Real MCP Server
+
+The first real MCP server now exists at:
+
+```txt
+alerts-mcp-server/
+└── src/
+    └── server.ts
+```
+
+It exposes these tools through the official MCP TypeScript SDK:
+
+- `getCriticalAlerts`
+- `getHighVibrationAssets`
+
+The server uses `McpServer` and `StdioServerTransport`.
+
+The important learning point:
+
+```txt
+MCP server = tool provider
+MCP client = tool consumer
+Transport = message channel between them
+```
+
+For this project, we intentionally use stdio transport:
+
+```txt
+Express backend
+-> spawns alerts MCP server process
+-> communicates over stdin/stdout
+-> discovers tools
+-> calls tools by name
+-> receives structured results
+```
+
+This keeps the MCP server local and simple. It is a real MCP boundary, but not a distributed deployment.
+
+The Express backend connects through:
+
+```txt
+src/services/mcp/alerts-mcp-client.service.ts
+```
+
+The MCP client does three key things:
+
+1. starts the MCP server process
+2. calls `listTools()` to discover available tools
+3. calls `callTool()` to execute alert tools remotely
+
+Alert-related calls now go through MCP:
+
+- `getCriticalAlerts`
+- `getHighVibrationAssets`
+
+These remain local for now:
+
+- `getAssetStatus`
+- `getMaintenanceHistory`
+
+This means the current architecture is now mixed on purpose:
+
+```txt
+Alert tools -> MCP server
+Asset status -> local backend tool
+Maintenance history -> local backend tool
+```
+
+That split is useful for learning because it lets us compare local tool execution with MCP-based tool execution.
+
 ## 9. REST Endpoints
 
 ### Health
@@ -696,6 +766,14 @@ Fix:
 
 The orchestration service now supports one explicit follow-up tool planning step.
 
+### Problem: Tools were MCP-style, but not real MCP
+
+Earlier, tools followed MCP ideas, but they were still normal local TypeScript functions.
+
+Fix:
+
+Alert tools now live behind a real MCP server boundary. The backend discovers and calls them through the official MCP SDK using stdio transport.
+
 ## 19. Current Limitations
 
 These are known and acceptable for the current learning-focused stage:
@@ -835,11 +913,13 @@ Create a tiny HTML file or script that calls `/chat/stream`.
 
 This would help visualize SSE without needing a frontend framework.
 
-### Step 9: Add Real MCP Server Later
+### Step 9: Expand MCP Gradually
 
-Only after the current MCP-style architecture is well understood, consider implementing a real MCP server.
+The first real MCP server has now been added for alert tools.
 
-Current project already teaches the core idea:
+Future MCP work can migrate more tool groups when the pattern is understood.
+
+The current project now teaches the core idea with both local and MCP-backed tools:
 
 ```txt
 AI chooses controlled tools.
@@ -874,7 +954,7 @@ Recommended sequence:
 6. Error categories
 7. Streaming client example
 8. OpenAI provider
-9. Real MCP server experiment
+9. Expand MCP to another tool group
 10. Evaluation checklist
 ```
 
