@@ -1,6 +1,6 @@
-import { getAssetStatus } from "./assets.tool.js";
-import { getCriticalAlerts, getHighVibrationAssets } from "./alerts.tool.js";
-import { getMaintenanceHistory } from "./maintenance.tool.js";
+import { callAlertsMcpTool } from "../services/mcp/alerts-mcp-client.service.js";
+import { callAssetMcpTool } from "../services/mcp/asset-mcp-client.service.js";
+import { callMaintenanceMcpTool } from "../services/mcp/maintenance-mcp-client.service.js";
 
 export type OperationalToolName =
   | "getCriticalAlerts"
@@ -146,19 +146,19 @@ export async function executeOperationalTool(name: OperationalToolName, args: Re
     case "getCriticalAlerts": {
       const assetType = readOptionalStringArg(args, "assetType");
       const alertType = readOptionalStringArg(args, "alertType");
-      return getCriticalAlerts({
+      return callAlertsMcpTool("getCriticalAlerts", {
         ...(assetType === undefined ? {} : { assetType }),
         ...(alertType === undefined ? {} : { alertType }),
       });
     }
     case "getAssetStatus":
-      return getAssetStatus({ assetId: readStringArg(args, "assetId") });
+      return callAssetMcpTool("getAssetStatus", { assetId: readStringArg(args, "assetId") });
     case "getMaintenanceHistory":
-      return getMaintenanceHistory({ assetId: readStringArg(args, "assetId") });
+      return callMaintenanceMcpTool("getMaintenanceHistory", { assetId: readStringArg(args, "assetId") });
     case "getHighVibrationAssets": {
       const minimumVibration = readOptionalNumberArg(args, "minimumVibration");
       const assetType = readOptionalStringArg(args, "assetType");
-      return getHighVibrationAssets({
+      return callAlertsMcpTool("getHighVibrationAssets", {
         ...(minimumVibration === undefined ? {} : { minimumVibration }),
         ...(assetType === undefined ? {} : { assetType }),
       });
