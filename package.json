@@ -10,6 +10,8 @@
     "mcp:alerts": "tsx alerts-mcp-server/src/server.ts",
     "mcp:asset": "tsx asset-mcp-server/src/server.ts",
     "mcp:maintenance": "tsx maintenance-mcp-server/src/server.ts",
+    "mcp:analytics": "tsx analytics-mcp-server/src/server.ts",
+    "mcp:knowledge": "tsx knowledge-mcp-server/src/server.ts",
     "test": "node ./node_modules/tsx/dist/cli.mjs --test tests/*.test.ts",
     "seed": "tsx scripts/seed-data.ts"
   },

@@ -1,0 +1,80 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+import { logger } from "../../utils/logger.js";
+
+let client: Client | null = null;
+let transport: StdioClientTransport | null = null;
+let discoveredTools: string[] = [];
+
+function getServerCommand() {
+  const builtServerPath = path.join(process.cwd(), "build", "analytics-mcp-server", "src", "server.js");
+
+  if (existsSync(builtServerPath)) {
+    return {
+      command: process.execPath,
+      args: [builtServerPath],
+    };
+  }
+
+  return {
+    command: process.execPath,
+    args: [path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), path.join(process.cwd(), "analytics-mcp-server", "src", "server.ts")],
+  };
+}
+
+export async function getAnalyticsMcpClient(): Promise<Client> {
+  if (client) return client;
+
+  const serverCommand = getServerCommand();
+  const nextClient = new Client({ name: "nli-ops-assistant-express-backend", version: "1.0.0" });
+  const nextTransport = new StdioClientTransport({ ...serverCommand, cwd: process.cwd(), env: { ...process.env } as Record<string, string>, stderr: "inherit" });
+
+  await nextClient.connect(nextTransport);
+
+  const toolsResult = await nextClient.listTools();
+  discoveredTools = toolsResult.tools.map((t: any) => t.name);
+  logger.info("Discovered analytics MCP tools", { category: "mcp", operation: "list_tools", tools: discoveredTools });
+
+  client = nextClient;
+  transport = nextTransport;
+  return client;
+}
+
+export function getDiscoveredAnalyticsMcpTools(): string[] {
+  return discoveredTools;
+}
+
+export async function callAnalyticsMcpTool(name: string, args: Record<string, unknown>) {
+  const mcpClient = await getAnalyticsMcpClient();
+
+  if (!discoveredTools.includes(name)) {
+    throw new Error(`Analytics MCP server did not expose required tool: ${name}`);
+  }
+
+  logger.info("Calling analytics MCP tool", { category: "mcp", operation: "call_tool", toolName: name, args });
+
+  const result = await mcpClient.callTool({ name, arguments: args });
+
+  if ("structuredContent" in result && result.structuredContent) {
+    return result.structuredContent;
+  }
+
+  const content = Array.isArray(result?.content) ? result.content : [];
+  const text = content.find((part: any) => part && part.type === "text" && typeof part.text === "string")?.text;
+
+  if (!text) throw new Error(`Analytics MCP tool ${name} returned no structured or text content.`);
+
+  return JSON.parse(text) as unknown;
+}
+
+export async function closeAnalyticsMcpClient(): Promise<void> {
+  await client?.close();
+  await transport?.close();
+  client = null;
+  transport = null;
+  discoveredTools = [];
+}

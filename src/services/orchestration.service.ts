@@ -1,4 +1,5 @@
 import { getLlmService, type LlmService, type ToolResult } from "./llm/llm.service.js";
+import { retrieveResourcesForQuery } from "./knowledge.service.js";
 import { logger } from "../utils/logger.js";
 import { measureAsync } from "../utils/timing.js";
 import {
@@ -137,6 +138,24 @@ export async function runOperationalChat(
     requestId,
     toolResultsCount: toolResults.length,
   });
+
+  // Retrieve and inject knowledge resources (RAG) to ground the summary when available.
+  const { result: retrievedResources, durationMs: retrievalDurationMs } = await measureAsync(() =>
+    retrieveResourcesForQuery(normalizedMessage),
+  );
+
+  if (Array.isArray(retrievedResources) && retrievedResources.length > 0) {
+    logger.info("Injecting retrieved knowledge into LLM context", {
+      category: "knowledge",
+      requestId,
+      resources: retrievedResources.map((r: any) => r.id),
+      retrievalDurationMs,
+    });
+
+    // Synthesize a knowledge tool result so the existing LLM summary flow can consume it.
+    toolResults.push({ name: "knowledge", result: retrievedResources } as ToolResult);
+  }
+
   const { result: response, durationMs: summaryDurationMs } = await measureAsync(() =>
     llm.summarizeWithToolResults(normalizedMessage, toolResults),
   );
@@ -219,6 +238,28 @@ export async function* streamOperationalChat(
   }
 
   yield { event: "status", data: { requestId, step: "streaming_summary" } };
+
+  // Retrieve and inject knowledge resources (RAG) for streaming summaries as well.
+  try {
+    const { result: retrievedResources, durationMs: retrievalDurationMs } = await measureAsync(() =>
+      retrieveResourcesForQuery(normalizedMessage),
+    );
+
+    if (Array.isArray(retrievedResources) && retrievedResources.length > 0) {
+      logger.info("Injecting retrieved knowledge into streaming LLM context", {
+        category: "knowledge",
+        requestId,
+        resources: retrievedResources.map((r: any) => r.id),
+        retrievalDurationMs,
+      });
+
+      // Synthesize a knowledge tool result so the existing streaming LLM flow can consume it.
+      toolResults.push({ name: "knowledge", result: retrievedResources } as ToolResult);
+    }
+  } catch (err) {
+    logger.warn("Knowledge retrieval failed for streaming summary", { error: err });
+  }
+
   for await (const chunk of llm.streamSummaryWithToolResults(normalizedMessage, toolResults)) {
     yield { event: "token", data: { requestId, text: chunk } };
   }
